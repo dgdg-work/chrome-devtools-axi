@@ -651,6 +651,105 @@ describe("main", () => {
 
     expect(callTool).toHaveBeenCalledWith("performance_stop_trace", {});
   });
+
+  const evalReturned = (value: string) =>
+    "Script ran on page and returned:\n```json\n" + value + "\n```";
+
+  it("resize confirms the size only after reading the viewport back", async () => {
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    callTool
+      .mockResolvedValueOnce("## Pages\n1: about:blank [selected]")
+      .mockResolvedValueOnce(evalReturned("[390,844]"));
+
+    await main(["resize", "390", "844"]);
+
+    expect(callTool.mock.calls.map(([tool]) => tool)).toEqual([
+      "resize_page",
+      "evaluate_script",
+    ]);
+    expect(
+      new Function(`return (${callTool.mock.calls[1][1].function})`)(),
+    ).toBeTypeOf("function");
+    expect(decode(String(write.mock.calls[0]?.[0]))).toEqual({
+      resized: { width: 390, height: 844 },
+    });
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("resize read-back waits up to about a second for the window to settle", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    callTool
+      .mockResolvedValueOnce("## Pages\n1: about:blank [selected]")
+      .mockResolvedValueOnce(evalReturned("[390,844]"));
+    await main(["resize", "390", "844"]);
+    const source = callTool.mock.calls[1][1].function;
+
+    const readBack = async (sizes: [number, number][], sleepMs?: number) => {
+      const delays: number[] = [];
+      let step = 0;
+      let clock = 0;
+      const page = {
+        get innerWidth() {
+          return sizes[Math.min(step, sizes.length - 1)][0];
+        },
+        get innerHeight() {
+          return sizes[Math.min(step, sizes.length - 1)][1];
+        },
+        Date: { now: () => clock },
+        setTimeout(resolve: () => void, ms: number) {
+          delays.push(ms);
+          clock += sleepMs ?? ms;
+          step++;
+          resolve();
+        },
+      };
+      const run = new Function("page", `with (page) return (${source})`)(page);
+      return { result: await run(), delays, elapsed: clock };
+    };
+
+    const settling = await readBack([
+      [1280, 720],
+      [1280, 720],
+      [390, 844],
+    ]);
+    expect(settling.result).toEqual([390, 844]);
+    expect(settling.delays).toEqual([50, 50]);
+
+    const stuck = await readBack([
+      [1280, 720],
+      [500, 844],
+    ]);
+    expect(stuck.result).toEqual([500, 844]);
+    expect(stuck.elapsed).toBeGreaterThanOrEqual(1000);
+    expect(stuck.elapsed).toBeLessThanOrEqual(1050);
+    expect(stuck.delays.every((ms) => ms === 50)).toBe(true);
+
+    // A hidden tab throttles timers to about one wake-up per second.
+    const throttled = await readBack([[500, 844]], 1000);
+    expect(throttled.result).toEqual([500, 844]);
+    expect(throttled.elapsed).toBeLessThanOrEqual(2000);
+  });
+
+  it("resize fails with the actual size when the viewport did not change (#154)", async () => {
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    callTool
+      .mockResolvedValueOnce("## Pages\n1: about:blank [selected]")
+      .mockResolvedValueOnce(evalReturned("[1200,2029]"));
+
+    await main(["resize", "390", "844"]);
+
+    const output = String(write.mock.calls[0]?.[0]);
+    expect(output).toContain(
+      "Viewport is 1200x2029, not the requested 390x844",
+    );
+    expect(output).toContain("emulate --viewport 390x844x1");
+    expect(output).not.toContain("resized");
+    expect(process.exitCode).toBe(1);
+  });
 });
 
 describe("pages selected overlay", () => {
