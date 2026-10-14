@@ -650,6 +650,7 @@ const FILE_OUTPUT_ARGS_BY_TOOL = new Map<string, readonly string[]>([
   ["get_network_request", ["responseFilePath", "requestFilePath"]],
   ["performance_start_trace", ["filePath"]],
   ["performance_stop_trace", ["filePath"]],
+  ["screencast_start", ["filePath"]],
   ["take_memory_snapshot", ["filePath"]],
 ]);
 const DIR_OUTPUT_ARGS_BY_TOOL = new Map<string, readonly string[]>([

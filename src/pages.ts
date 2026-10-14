@@ -45,6 +45,8 @@ export const PAGE_SCOPED_TOOLS: ReadonlySet<string> = new Set([
   "performance_stop_trace",
   "press_key",
   "resize_page",
+  "screencast_start",
+  "screencast_stop",
   "take_memory_snapshot",
   "take_screenshot",
   "take_snapshot",

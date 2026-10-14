@@ -3,6 +3,7 @@ import {
   getCommandHelp,
   parseLighthouseArgs,
   parsePerfStartArgs,
+  parseScreencastStartArgs,
 } from "../src/cli.js";
 
 describe("getCommandHelp", () => {
@@ -22,6 +23,14 @@ describe("getCommandHelp", () => {
     expect(getCommandHelp("perf-insight")).not.toBeNull();
   });
 
+  it("returns non-null for screencast-start", () => {
+    expect(getCommandHelp("screencast-start")).not.toBeNull();
+  });
+
+  it("returns non-null for screencast-stop", () => {
+    expect(getCommandHelp("screencast-stop")).not.toBeNull();
+  });
+
   it("returns non-null for heap", () => {
     expect(getCommandHelp("heap")).not.toBeNull();
   });
@@ -32,6 +41,8 @@ describe("getCommandHelp", () => {
       "perf-start",
       "perf-stop",
       "perf-insight",
+      "screencast-start",
+      "screencast-stop",
       "heap",
     ];
     for (const cmd of commands) {
@@ -76,5 +87,23 @@ describe("parsePerfStartArgs", () => {
   it("parses --no-auto-stop", () => {
     const result = parsePerfStartArgs(["--no-auto-stop"]);
     expect(result).toEqual({ autoStop: false });
+  });
+});
+
+describe("parseScreencastStartArgs", () => {
+  it("parses positional file path", () => {
+    expect(parseScreencastStartArgs(["./recording.mp4"])).toEqual({
+      filePath: "./recording.mp4",
+    });
+  });
+
+  it("parses --file flag", () => {
+    expect(parseScreencastStartArgs(["--file", "./recording.webm"])).toEqual({
+      filePath: "./recording.webm",
+    });
+  });
+
+  it("returns empty object for no args", () => {
+    expect(parseScreencastStartArgs([])).toEqual({});
   });
 });

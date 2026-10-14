@@ -49,7 +49,7 @@ export type MainOptions = {
 };
 
 export const TOP_HELP = `usage: chrome-devtools-axi [command] [args] [flags]
-commands[35]:
+commands[37]:
   open <url>, snapshot, screenshot <path>, click @<uid>, fill @<uid> <text>,
   type <text>, press <key>, scroll <dir>, back, wait <ms|text>, eval <js>,
   run,
@@ -57,7 +57,8 @@ commands[35]:
   upload @<uid> <path>, pages, newpage <url>, selectpage <id>, closepage <id>,
   resize <w> <h>, emulate, console, console-get <id>, network,
   network-get [id], lighthouse, perf-start, perf-stop,
-  perf-insight <set> <name>, heap <path>, start, stop, setup hooks
+  perf-insight <set> <name>, screencast-start [path], screencast-stop,
+  heap <path>, start, stop, setup hooks
 
 flags[2]:
   --help, -v/-V/--version
@@ -590,6 +591,28 @@ examples:
   chrome-devtools-axi perf-insight set1 DocumentLatency
   chrome-devtools-axi perf-insight set1 LCPBreakdown`,
 
+  "screencast-start": `usage: chrome-devtools-axi screencast-start [path] [--file <path>]
+Start recording the current page tab to a video file (.mp4 or .webm). Requires ffmpeg on PATH.
+
+args:
+  [path]  Output video file path (.mp4 or .webm). Uses a temp file if omitted.
+
+flags:
+  --file <path>  Output video file path (.mp4 or .webm)
+
+Relative output paths resolve against the directory where you run the CLI.
+Output reports the resolved absolute path.
+
+examples:
+  chrome-devtools-axi screencast-start ./recording.mp4
+  chrome-devtools-axi screencast-start --file ./recording.webm`,
+
+  "screencast-stop": `usage: chrome-devtools-axi screencast-stop
+Stop the active screencast recording and save the video file.
+
+examples:
+  chrome-devtools-axi screencast-stop`,
+
   heap: `usage: chrome-devtools-axi heap <path>
 Capture a heap snapshot for memory leak debugging.
 
@@ -860,6 +883,20 @@ export function parsePerfStartArgs(args: string[]): {
       case "--file":
         result.filePath = args[++i];
         break;
+    }
+  }
+  return result;
+}
+
+export function parseScreencastStartArgs(args: string[]): {
+  filePath?: string;
+} {
+  const result: { filePath?: string } = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--file" && i + 1 < args.length) {
+      result.filePath = args[++i];
+    } else if (!args[i].startsWith("--") && result.filePath === undefined) {
+      result.filePath = args[i];
     }
   }
   return result;
@@ -1594,6 +1631,47 @@ async function handlePerfInsight(args: string[]): Promise<string> {
   return formatMcpResult("insight", result, []);
 }
 
+async function handleScreencastStart(args: string[]): Promise<string> {
+  const opts = parseScreencastStartArgs(args);
+  if (opts.filePath) {
+    opts.filePath = resolveOutputPath(opts.filePath);
+  }
+  const result = await callTool("screencast_start", opts);
+  const errMatch = result.match(/^Error:\s*(.+)/m);
+  if (errMatch) {
+    throw new CdpError(errMatch[1], "BROWSER_ERROR", [
+      "Run `chrome-devtools-axi screencast-stop` to stop the active recording first",
+    ]);
+  }
+  const savedMatch = result.match(/will be saved to (.+?)\. Use screencast_stop/);
+  const filePath = opts.filePath ?? savedMatch?.[1];
+  return renderOutput([
+    encode({
+      screencast: "started",
+      ...(filePath ? { filePath } : {}),
+    }),
+    renderHelp([
+      "Run `chrome-devtools-axi screencast-stop` to stop recording and save the video",
+    ]),
+  ]);
+}
+
+async function handleScreencastStop(): Promise<string> {
+  const result = await callTool("screencast_stop");
+  const errMatch = result.match(/^Error:\s*(.+)/m);
+  if (errMatch) {
+    throw new CdpError(errMatch[1], "BROWSER_ERROR", [
+      "Run `chrome-devtools-axi screencast-start [path]` to start a recording first",
+    ]);
+  }
+  const savedMatch = result.match(/saved to (.+?)\.(?:\s|$)/);
+  const filePath = savedMatch?.[1];
+  return encode({
+    screencast: "stopped",
+    ...(filePath ? { filePath } : { message: result.trim() }),
+  });
+}
+
 async function handleHeap(args: string[]): Promise<string> {
   const rawPath = args[0];
   if (!rawPath) {
@@ -1741,6 +1819,8 @@ const COMMAND_HANDLERS: Record<string, CommandFn> = {
   "perf-start": withoutFullFlag(handlePerfStart),
   "perf-stop": withoutFullFlag(handlePerfStop),
   "perf-insight": withoutFullFlag(handlePerfInsight),
+  "screencast-start": withoutFullFlag(handleScreencastStart),
+  "screencast-stop": withoutFullFlag(() => handleScreencastStop()),
   heap: withoutFullFlag(handleHeap),
   start: async () => handleStart(),
   stop: async () => handleStop(),
@@ -1786,6 +1866,8 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   "perf-start": ["--no-reload", "--no-auto-stop", "--file"],
   "perf-stop": ["--file"],
   "perf-insight": [],
+  "screencast-start": ["--file"],
+  "screencast-stop": [],
   heap: [],
   start: [],
   stop: [],
@@ -1801,6 +1883,7 @@ const COMMAND_VALUE_FLAGS: Partial<Record<string, readonly string[]>> = {
   lighthouse: COMMAND_FLAGS.lighthouse,
   "perf-start": ["--file"],
   "perf-stop": COMMAND_FLAGS["perf-stop"],
+  "screencast-start": ["--file"],
 };
 
 const COMMAND_POSITIONAL_TEXT_START: Partial<Record<string, number>> = {
@@ -1817,6 +1900,7 @@ const COMMAND_DASH_POSITIONAL_SLOTS: Partial<
   heap: [0],
   upload: [1],
   screenshot: [0],
+  "screencast-start": [0],
 };
 
 const COMMANDS: Record<string, CommandFn> = Object.fromEntries(

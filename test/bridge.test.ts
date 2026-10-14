@@ -219,6 +219,7 @@ describe("buildTransportArgs", () => {
     expect(args).toEqual([
       "-y",
       "chrome-devtools-mcp@latest",
+      "--experimentalScreencast",
       "--isolated",
       "--headless",
       "--chrome-arg=--use-mock-keychain",
@@ -232,6 +233,7 @@ describe("buildTransportArgs", () => {
     expect(args).toEqual([
       "-y",
       "chrome-devtools-mcp@latest",
+      "--experimentalScreencast",
       "--isolated",
       "--chrome-arg=--use-mock-keychain",
       "--chrome-arg=--password-store=basic",
